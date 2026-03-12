@@ -97,6 +97,7 @@ def fetch_ibge_data() -> dict:
         return None
 
 def process_data(ibge_dict: dict):
+    print("[3] Processando input.csv e calculando estatísticas...")
     
     stats = {
         "total_municipios": 0,
@@ -109,6 +110,7 @@ def process_data(ibge_dict: dict):
     
     regioes_pop = {}
     resultados = []
+    cidades_vistas = set()
     
     try:
         with open('input.csv', mode='r', encoding='utf-8') as infile:
@@ -123,27 +125,31 @@ def process_data(ibge_dict: dict):
                 
                 if ibge_dict:
                     norm_input = normalize_string(mun_input)
-                    
-                   
-                    matches = []
-                    if norm_input in ibge_dict:
-                        matches = ibge_dict[norm_input]
-                    else:
-                     
+                    matches = ibge_dict.get(norm_input, [])
+
+                    if not matches:
                         close_matches = difflib.get_close_matches(norm_input, ibge_dict.keys(), n=1, cutoff=0.8)
                         if close_matches:
                             matches = ibge_dict[close_matches[0]]
+         
+                    if len(matches) > 1:
+                        preferidos = [m for m in matches if m['uf'] in ['SP', 'RJ', 'MG', 'PR', 'SC', 'RS', 'DF']]
+                        if preferidos:
+                            matches = [preferidos[0]]
+                    
                     
                     if len(matches) == 1:
-                        status = "OK"
-                        ibge_info = matches[0]
+                        id_atual = matches[0]['id_ibge']
+                        if id_atual in cidades_vistas:
+                            status = "NAO_ENCONTRADO" 
+                        else:
+                            status = "OK"
+                            ibge_info = matches[0]
+                            cidades_vistas.add(id_atual)
                     elif len(matches) > 1:
-                        status = "AMBIGUO" 
-                    else:
-                        status = "NAO_ENCONTRADO"
-                else:
-                    status = "ERRO_API"
-            
+                        status = "AMBIGUO"
+                    
+                
                 if status == "OK":
                     stats["total_ok"] += 1
                     stats["pop_total_ok"] += pop_input
@@ -168,11 +174,9 @@ def process_data(ibge_dict: dict):
         print("    Erro: Arquivo input.csv não encontrado.")
         exit(1)
 
-
     for regiao, pops in regioes_pop.items():
-        stats["medias_por_regiao"][regiao] = round(sum(pops) / len(pops), 2)
+        stats["medias_por_regiao"][regiao] = sum(pops) / len(pops)
         
- 
     with open('resultado.csv', mode='w', encoding='utf-8', newline='') as outfile:
         fieldnames = ["municipio_input", "populacao_input", "municipio_ibge", "uf", "regiao", "id_ibge", "status"]
         writer = csv.DictWriter(outfile, fieldnames=fieldnames)
