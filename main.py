@@ -1,3 +1,4 @@
+import urllib3
 import csv
 import json
 import requests
@@ -22,8 +23,6 @@ def normalize_string(s: str) -> str:
     return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
 
 def get_access_token() -> str:
-    """Faz login no Supabase e retorna o JWT."""
-    print("[1] Autenticando no Supabase...")
     url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
     headers = {
         "Content-Type": "application/json",
@@ -43,8 +42,6 @@ def get_access_token() -> str:
         exit(1)
 
 def fetch_ibge_data() -> dict:
-    """Busca todos os municípios no IBGE e mapeia seus nomes de forma segura."""
-    print("[2] Buscando dados da API do IBGE...")
     url = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios"
     
     headers = {
@@ -52,8 +49,6 @@ def fetch_ibge_data() -> dict:
     }
     
     try:
-        # Desativando avisos chatos de SSL no terminal do Linux
-        import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         
         response = requests.get(url, headers=headers, timeout=30, verify=False)
@@ -63,11 +58,8 @@ def fetch_ibge_data() -> dict:
         ibge_dict = {}
         for mun in data:
             try:
-                # Usando .get() para não quebrar caso falte alguma chave na árvore
                 nome_oficial = mun.get('nome', '')
                 id_ibge = mun.get('id', '')
-                
-                # Navegação segura pela estrutura do IBGE
                 micro = mun.get('microrregiao', {})
                 meso = micro.get('mesorregiao', {})
                 uf_dict = meso.get('UF', {})
@@ -76,7 +68,6 @@ def fetch_ibge_data() -> dict:
                 uf = uf_dict.get('sigla', '')
                 regiao = regiao_dict.get('nome', '')
                 
-                # Fallback: Se não achar pela microrregião, tenta pela regiao-imediata (novo padrão IBGE)
                 if not uf:
                     uf = mun.get('regiao-imediata', {}).get('regiao-intermediaria', {}).get('UF', {}).get('sigla', '')
                     regiao = mun.get('regiao-imediata', {}).get('regiao-intermediaria', {}).get('UF', {}).get('regiao', {}).get('nome', '')
@@ -93,7 +84,6 @@ def fetch_ibge_data() -> dict:
                     "id_ibge": id_ibge
                 })
             except Exception as e_mun:
-                # Se um município específico falhar, apenas avisa e continua os outros
                 print(f"    [Aviso] Falha ao processar dados de {mun.get('nome')}: {e_mun}")
                 continue
                 
@@ -105,9 +95,7 @@ def fetch_ibge_data() -> dict:
         import traceback
         traceback.print_exc() 
         return None
-# ==========================================
-# PROCESSAMENTO DE DADOS
-# ==========================================
+
 def process_data(ibge_dict: dict):
     print("[3] Processando input.csv e gerando resultado.csv...")
     
@@ -137,12 +125,12 @@ def process_data(ibge_dict: dict):
                 if ibge_dict:
                     norm_input = normalize_string(mun_input)
                     
-                    # 1. Tenta match exato no nome normalizado
+                   
                     matches = []
                     if norm_input in ibge_dict:
                         matches = ibge_dict[norm_input]
                     else:
-                        # 2. Tenta fuzzy matching (ex: typos como "Belo Horzionte")
+                     
                         close_matches = difflib.get_close_matches(norm_input, ibge_dict.keys(), n=1, cutoff=0.8)
                         if close_matches:
                             matches = ibge_dict[close_matches[0]]
@@ -151,13 +139,12 @@ def process_data(ibge_dict: dict):
                         status = "OK"
                         ibge_info = matches[0]
                     elif len(matches) > 1:
-                        status = "AMBIGUO" # Ex: Santo André (SP e PB)
+                        status = "AMBIGUO" 
                     else:
                         status = "NAO_ENCONTRADO"
                 else:
                     status = "ERRO_API"
-                
-                # Atualiza estatísticas
+            
                 if status == "OK":
                     stats["total_ok"] += 1
                     stats["pop_total_ok"] += pop_input
@@ -167,7 +154,6 @@ def process_data(ibge_dict: dict):
                         regioes_pop[regiao] = []
                     regioes_pop[regiao].append(pop_input)
                 elif status in ["NAO_ENCONTRADO", "AMBIGUO"]:
-                    # Contabilizando ambíguos como não encontrados na estatística final enviada à API
                     stats["total_nao_encontrado"] += 1
                     
                 resultados.append({
@@ -183,11 +169,11 @@ def process_data(ibge_dict: dict):
         print("    Erro: Arquivo input.csv não encontrado.")
         exit(1)
 
-    # Calculando as médias por região
+
     for regiao, pops in regioes_pop.items():
         stats["medias_por_regiao"][regiao] = round(sum(pops) / len(pops), 2)
         
-    # Escrevendo o resultado.csv
+ 
     with open('resultado.csv', mode='w', encoding='utf-8', newline='') as outfile:
         fieldnames = ["municipio_input", "populacao_input", "municipio_ibge", "uf", "regiao", "id_ibge", "status"]
         writer = csv.DictWriter(outfile, fieldnames=fieldnames)
@@ -197,9 +183,6 @@ def process_data(ibge_dict: dict):
     print("    resultado.csv gerado com sucesso!")
     return stats
 
-# ==========================================
-# ENVIO PARA API DE CORREÇÃO
-# ==========================================
 def submit_results(token: str, stats: dict):
     print("[4] Enviando resultados para Edge Function...")
     payload = {"stats": stats}
@@ -220,9 +203,7 @@ def submit_results(token: str, stats: dict):
     except json.JSONDecodeError:
         print(response.text)
 
-# ==========================================
-# FLUXO PRINCIPAL
-# ==========================================
+
 if __name__ == "__main__":
     token = get_access_token()
     ibge_data = fetch_ibge_data()
