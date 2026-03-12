@@ -97,7 +97,6 @@ def fetch_ibge_data() -> dict:
         return None
 
 def process_data(ibge_dict: dict):
-    print("[3] Processando input.csv e gerando resultado.csv...")
     
     stats = {
         "total_municipios": 0,
@@ -184,7 +183,7 @@ def process_data(ibge_dict: dict):
     return stats
 
 def submit_results(token: str, stats: dict):
-    print("[4] Enviando resultados para Edge Function...")
+    print("Enviando resultados para Edge Function...")
     payload = {"stats": stats}
     
     headers = {
